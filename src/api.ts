@@ -27,6 +27,20 @@ export interface CheckResponse {
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
 
+export interface MunicipalityInfo {
+  name: string
+  id: string
+  initials: string
+  color: string
+}
+
+export async function fetchMunicipalities(): Promise<MunicipalityInfo[]> {
+  const res = await fetch(`${BASE}/municipalities`)
+  if (!res.ok) throw new Error(`שגיאת שרת ${res.status}`)
+  const data = await res.json()
+  return data.municipalities
+}
+
 export async function checkFines(idNumber: string, carNumber: string): Promise<CheckResponse> {
   const res = await fetch(`${BASE}/check`, {
     method: 'POST',
@@ -38,6 +52,50 @@ export async function checkFines(idNumber: string, carNumber: string): Promise<C
     throw new Error((err as { detail?: string }).detail ?? `שגיאת שרת ${res.status}`)
   }
   return res.json() as Promise<CheckResponse>
+}
+
+export async function checkFinesStream(
+  idNumber: string,
+  carNumber: string,
+  onResult: (result: MunicipalityResult) => void,
+  onDone: (summary: CheckResponse['summary']) => void,
+): Promise<void> {
+  const res = await fetch(`${BASE}/check-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_number: idNumber.trim(), car_number: carNumber.trim() }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? `שגיאת שרת ${res.status}`)
+  }
+
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'result') {
+            onResult(data.result)
+          } else if (data.type === 'done') {
+            onDone(data.summary)
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+  }
 }
 
 export interface VehicleInfo {
@@ -58,6 +116,75 @@ export interface VehicleInfo {
   front_tire?: string
   rear_tire?: string
   chassis?: string
+}
+
+/**
+ * Fetch municipality images from Hebrew Wikipedia in a single batch request.
+ * Returns a map of municipality name -> thumbnail URL.
+ */
+export async function fetchMunicipalityImages(names: string[]): Promise<Record<string, string>> {
+  // Hardcoded overrides for municipalities with better/specific logos
+  const overrides: Record<string, string> = {
+    'עיריית הרצליה': 'https://www.herzliya.muni.il/content/images/logo_he_if.png',
+    'עיריית רמת גן': 'https://forms.ramat-gan.muni.il/content/images/wide-logo.png',
+    'עיריית ערד': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTab2VSREY1MOVhSE1Bm9Pi0YC-EJ5vROFL9A&s',
+    'מועצה אזורית גוש עציון': 'https://upload.wikimedia.org/wikipedia/he/9/91/%D7%9E%D7%95%D7%A2%D7%A6%D7%94_%D7%90%D7%96%D7%95%D7%A8%D7%99%D7%AA_%D7%92%D7%95%D7%A9_%D7%A2%D7%A6%D7%99%D7%95%D7%9F.jpg',
+    'עיריית גני תקווה': 'https://www.ganeytikva.org.il/content/images/logo2020.png?v=1a',
+    'מ.מ. מזכרת בתיה': 'https://mazkeret-batya.muni.il/wp-content/uploads/2024/01/Capture.png',
+    'מ.א עמק יזרעאל': 'https://www.emekyizrael.org.il/content/images/logo.png',
+    'עיריית שדרות': 'https://sderot.muni.gov.il/media/wablgxsq/logo.png',
+  }
+
+  // Start with overrides
+  const result: Record<string, string> = {}
+  const wikiNames: string[] = []
+  for (const name of names) {
+    if (overrides[name]) {
+      result[name] = overrides[name]
+    } else {
+      wikiNames.push(name)
+    }
+  }
+
+  // Fetch the rest from Wikipedia
+  if (wikiNames.length === 0) return result
+
+  const stripPrefix = (n: string) =>
+    n.replace(/^(עיריית |מועצה מקומית |מועצה אזורית |מ\.א\.? |מ\.מ\.? |רשות )/, '')
+
+  const nameToSearch: Record<string, string> = {}
+  for (const name of wikiNames) {
+    nameToSearch[name] = stripPrefix(name)
+  }
+
+  const searchTerms = Object.values(nameToSearch)
+  const titles = searchTerms.map(t => encodeURIComponent(t)).join('|')
+
+  try {
+    const url = `https://he.wikipedia.org/w/api.php?action=query&titles=${titles}&prop=pageimages&format=json&pithumbsize=200&origin=*`
+    const res = await fetch(url)
+    if (!res.ok) return result
+    const data = await res.json()
+    const pages = data?.query?.pages ?? {}
+
+    // Build a reverse map: search term -> original municipality name
+    const searchToName: Record<string, string> = {}
+    for (const [name, search] of Object.entries(nameToSearch)) {
+      searchToName[search] = name
+    }
+
+    for (const page of Object.values(pages) as Array<{ title?: string; thumbnail?: { source?: string } }>) {
+      if (page.thumbnail?.source) {
+        // Find which municipality this page matches
+        const matchedName = searchToName[page.title ?? '']
+        if (matchedName) {
+          result[matchedName] = page.thumbnail.source
+        }
+      }
+    }
+  } catch { /* silently fail — we'll just show initials as fallback */ }
+
+  return result
 }
 
 export async function fetchVehicleInfo(carNumber: string): Promise<VehicleInfo> {
