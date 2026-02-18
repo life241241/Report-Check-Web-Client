@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ─── */
+:root {
+  --accent: #2563eb;
+  --accent-2: #1d4ed8;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e2e8f0;
+  --ok: #16a34a;
+  --ok-bg: #f0fdf4;
+  --ok-border: #bbf7d0;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --warn-border: #fde68a;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* ─── Custom utilities used in App.tsx ─── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-fade-up  { animation: fade-up 0.4s ease-out; }
+.animate-fade-in  { animation: fade-in 0.3s ease-out; }
+.animate-spin-slow { animation: spin 1.5s linear infinite; }
+
+.shimmer-bar {
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
