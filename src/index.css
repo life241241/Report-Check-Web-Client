@@ -247,6 +247,35 @@ body::after {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── Digit spinner: idle slow continuous loop ─── */
+.digit-reel-idle {
+  animation: reel-idle 3s linear infinite;
+}
+@keyframes reel-idle {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(calc(-10 * var(--digit-h))); }
+}
+
+/* ─── Digit spinner: fast landing reel ─── */
+.digit-reel-land {
+  animation: reel-land 1s cubic-bezier(0.2, 0, 0.05, 1) forwards;
+}
+@keyframes reel-land {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(calc(-1 * var(--total) * var(--digit-h))); }
+}
+
+/* ─── Final digit landing pop + glow ─── */
+@keyframes digit-land {
+  0%   { transform: scale(1.5); opacity: 0; text-shadow: 0 0 14px rgba(255, 255, 255, 0.6); }
+  50%  { transform: scale(0.85); opacity: 1; }
+  75%  { transform: scale(1.15); text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
+  100% { transform: scale(1); text-shadow: none; }
+}
+.animate-digit-land {
+  animation: digit-land 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 .animate-fade-up       { animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .animate-fade-in       { animation: fade-in 0.4s ease-out both; }
 .animate-slide-right   { animation: slide-in-right 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -315,22 +344,37 @@ body::after {
 .marquee-col {
   position: absolute;
   top: 0;
-  width: 180px;
+  width: 260px;
   pointer-events: none;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+}
+.marquee-col::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 .marquee-col-right { right: 0; }
+.marquee-col-right::before {
+  background: radial-gradient(ellipse 120% 60% at 100% 50%, rgba(99, 102, 241, 0.10), transparent 70%),
+              radial-gradient(ellipse 80% 40% at 90% 30%, rgba(139, 92, 246, 0.08), transparent 60%);
+}
 .marquee-col-left  { left: 0; }
+.marquee-col-left::before {
+  background: radial-gradient(ellipse 120% 60% at 0% 50%, rgba(139, 92, 246, 0.10), transparent 70%),
+              radial-gradient(ellipse 80% 40% at 10% 70%, rgba(99, 102, 241, 0.08), transparent 60%);
+}
 .marquee-track {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 14px;
+  padding: 12px 0;
 }
-.marquee-track-down { animation: marquee-down 30s linear infinite; }
-.marquee-track-up   { animation: marquee-up 35s linear infinite; }
+.marquee-track-down { animation: marquee-down 35s linear infinite; }
+.marquee-track-up   { animation: marquee-up 40s linear infinite; }
 
 /* ─── Floating particles ─── */
 .particles {

@@ -13,7 +13,7 @@ import {
    🧪 TEST MODE — set to true to simulate results without
    hitting the real server. Set to false for production.
    ═══════════════════════════════════════════════════════════ */
-const TEST_MODE = true
+const TEST_MODE =false
 /* ═══════════════════════════════════════════════════════════ */
 
 const MOCK_MUNICIPALITY_RESULTS: MunicipalityResult[] = [
@@ -175,14 +175,14 @@ function MunicipalityMarquee({ municipalities, images, side }: {
       <div className={`marquee-track ${side === 'right' ? 'marquee-track-down' : 'marquee-track-up'}`}>
         {items.map((m, i) => (
           <div key={`${m.id}-${i}`}
-            className="glass rounded-xl px-3 py-2 flex items-center gap-2.5 mx-3 opacity-50 hover:opacity-80 transition-opacity">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0"
-              style={{ backgroundColor: m.color }}>
+            className="glass-strong rounded-2xl px-4 py-3 flex items-center gap-3 mx-4 opacity-60 hover:opacity-90 transition-all duration-300 hover:scale-[1.02]">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md"
+              style={{ backgroundColor: m.color, boxShadow: `0 4px 12px ${m.color}33` }}>
               {images[m.name]
-                ? <img src={images[m.name]} alt={m.name} className="w-5 h-5 object-contain" />
-                : <span className="text-white font-bold text-[10px]">{m.initials}</span>}
+                ? <img src={images[m.name]} alt={m.name} className="w-7 h-7 object-contain" />
+                : <span className="text-white font-bold text-xs">{m.initials}</span>}
             </div>
-            <span className="text-[11px] text-[var(--muted)] font-medium truncate">{m.name}</span>
+            <span className="text-[13px] text-[var(--ink-secondary)] font-medium truncate">{m.name}</span>
           </div>
         ))}
       </div>
@@ -497,8 +497,20 @@ function Filters({
 
 /* ─── Input Field ─── */
 
+/** Calculate the Israeli Teudat Zehut check digit (9th digit) from the first 8 digits */
+function calcIsraeliIdCheckDigit(first8: string): string {
+  if (!/^\d{8}$/.test(first8)) return ''
+  let sum = 0
+  for (let i = 0; i < 8; i++) {
+    let digit = Number(first8[i]) * ((i % 2) + 1) // multiply by 1 or 2 alternately
+    if (digit > 9) digit = Math.floor(digit / 10) + (digit % 10) // sum digits
+    sum += digit
+  }
+  return String((10 - (sum % 10)) % 10)
+}
+
 function InputField({
-  id, label, icon, value, onChange, placeholder, maxLength, disabled,
+  id, label, icon, value, onChange, placeholder, maxLength, disabled, suffix,
 }: {
   id: string
   label: string
@@ -508,32 +520,131 @@ function InputField({
   placeholder: string
   maxLength: number
   disabled: boolean
+  suffix?: string
 }) {
+  // For suffix fields: hide input text, overlay digits + spinner
+  const hasSuffix = suffix !== undefined
   return (
     <div className="space-y-2">
       <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium text-[var(--ink-secondary)]">
         <span className="text-[var(--accent-light)]">{icon}</span>
         {label}
       </label>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        value={value}
-        maxLength={maxLength}
-        disabled={disabled}
-        placeholder={placeholder}
-        onChange={e => onChange(e.target.value.replace(/\D/g, ''))}
-        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3.5
-                   font-mono text-lg tracking-[0.18em] text-center text-[var(--ink)]
-                   placeholder:text-[var(--muted)]/40 placeholder:font-sans placeholder:tracking-normal placeholder:text-base
-                   focus:outline-none input-glow
-                   disabled:opacity-40 disabled:cursor-not-allowed
-                   transition-all duration-200"
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          value={value}
+          maxLength={maxLength}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={e => onChange(e.target.value.replace(/\D/g, ''))}
+          className={`w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3.5
+                     font-mono text-lg tracking-[0.18em] text-center
+                     placeholder:text-[var(--muted)]/40 placeholder:font-sans placeholder:tracking-normal placeholder:text-base
+                     focus:outline-none input-glow
+                     disabled:opacity-40 disabled:cursor-not-allowed
+                     transition-all duration-200
+                     ${hasSuffix && value.length > 0 ? 'text-transparent caret-[var(--ink)]' : 'text-[var(--ink)]'}`}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        {/* Overlay: digits + spinner inline, centered together */}
+        {hasSuffix && value.length > 0 && (
+          <div dir="ltr" className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="font-mono text-lg tracking-[0.18em] text-[var(--ink)]">{value}</span>
+            <DigitSpinner digit={suffix} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Slot-machine digit spinner.
+ * - When digit is '' (no target yet): spins slowly & continuously
+ * - When digit is set: spins fast then lands on the target
+ */
+function DigitSpinner({ digit }: { digit: string }) {
+  const DIGIT_H = 26 // px per cell
+  const DIGITS = [0,1,2,3,4,5,6,7,8,9]
+
+  const [phase, setPhase] = useState<'idle' | 'landing' | 'done'>('idle')
+  const [landed, setLanded] = useState<number | null>(null)
+  const prevDigit = useRef('')
+
+  useEffect(() => {
+    // No check digit yet — keep spinning idle
+    if (!digit) {
+      setPhase('idle')
+      setLanded(null)
+      prevDigit.current = ''
+      return
+    }
+    // Same digit, already landed
+    if (digit === prevDigit.current && phase === 'done') return
+    prevDigit.current = digit
+
+    // Start landing sequence
+    setPhase('landing')
+    setLanded(null)
+    const timer = setTimeout(() => {
+      setPhase('done')
+      setLanded(Number(digit))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [digit, phase])
+
+  const targetNum = digit ? Number(digit) : 0
+  // Build the landing reel: 0-9, 0-9, 0-9, then target
+  const landingReel = [...DIGITS, ...DIGITS, ...DIGITS, targetNum]
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-md"
+      style={{ width: 18, height: DIGIT_H }}
+    >
+      {phase === 'done' && landed !== null ? (
+        /* Final landed digit */
+        <div
+          className="flex items-center justify-center font-mono text-lg font-black text-[var(--ink)] animate-digit-land"
+          style={{ height: DIGIT_H }}
+        >
+          {landed}
+        </div>
+      ) : phase === 'landing' ? (
+        /* Fast spin landing on target */
+        <div
+          className="digit-reel-land"
+          style={{ '--digit-h': `${DIGIT_H}px`, '--total': landingReel.length - 1 } as React.CSSProperties}
+        >
+          {landingReel.map((d, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-center font-mono text-lg font-bold"
+              style={{ height: DIGIT_H }}
+            >
+              <span className={i === landingReel.length - 1 ? 'text-[var(--ink)]' : 'text-[var(--muted)]'}>{d}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Idle: slow continuous spin */
+        <div className="digit-reel-idle" style={{ '--digit-h': `${DIGIT_H}px` } as React.CSSProperties}>
+          {[...DIGITS, ...DIGITS].map((d, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-center font-mono text-lg font-bold text-[var(--muted)]/50"
+              style={{ height: DIGIT_H }}
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -553,6 +664,7 @@ export default function App() {
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null)
   const [apiError, setApiError] = useState('')
   const [filter, setFilter] = useState<FilterKey>('all')
+  const idCheckDigit = calcIsraeliIdCheckDigit(idNum)
   const streamRef = useRef<Record<string, MunicipalityResult>>({})
   const idId = useId()
   const carId = useId()
@@ -574,7 +686,8 @@ export default function App() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!idNum.trim() || !carNum.trim()) return
+    if (idNum.length !== 8 || carNum.length < 7 || carNum.length > 8) return
+    const fullId = idNum + idCheckDigit
     setLoading(true)
     setApiError('')
     setResponse(null)
@@ -608,7 +721,7 @@ export default function App() {
 
     try {
       await checkFinesStream(
-        idNum,
+        fullId,
         carNum,
         // onResult — called for each municipality as it completes
         (result) => {
@@ -709,12 +822,13 @@ export default function App() {
                 <InputField
                   id={idId} label="מספר תעודת זהות" icon={<CreditCard size={15} />}
                   value={idNum} onChange={setIdNum}
-                  placeholder="נא להזין 9 ספרות" maxLength={9} disabled={loading}
+                  placeholder="נא להזין 8 ספרות" maxLength={8} disabled={loading}
+                  suffix={idCheckDigit}
                 />
                 <InputField
                   id={carId} label="מספר רכב" icon={<Car size={15} />}
                   value={carNum} onChange={setCarNum}
-                  placeholder="נא להזין מספר רכב" maxLength={8} disabled={loading}
+                  placeholder="נא להזין 7-8 ספרות" maxLength={8} disabled={loading}
                 />
 
                 {apiError && (
@@ -726,7 +840,7 @@ export default function App() {
 
                 <button
                   type="submit"
-                  disabled={loading || !idNum.trim() || !carNum.trim()}
+                  disabled={loading || idNum.length !== 8 || carNum.length < 7 || carNum.length > 8}
                   className="btn-gradient w-full flex items-center justify-center gap-2.5
                              text-white font-bold text-base
                              px-6 py-4 rounded-xl
@@ -790,12 +904,13 @@ export default function App() {
                   <InputField
                     id={idId} label="מספר תעודת זהות" icon={<CreditCard size={15} />}
                     value={idNum} onChange={setIdNum}
-                    placeholder="הזן 9 ספרות" maxLength={9} disabled={loading}
+                    placeholder="הזן 8 ספרות" maxLength={8} disabled={loading}
+                    suffix={idCheckDigit}
                   />
                   <InputField
                     id={carId} label="מספר רכב" icon={<Car size={15} />}
                     value={carNum} onChange={setCarNum}
-                    placeholder="הזן מספר רכב" maxLength={8} disabled={loading}
+                    placeholder="הזן 7-8 ספרות" maxLength={8} disabled={loading}
                   />
 
                   {apiError && (
@@ -807,7 +922,7 @@ export default function App() {
 
                   <button
                     type="submit"
-                    disabled={loading || !idNum.trim() || !carNum.trim()}
+                    disabled={loading || idNum.length !== 8 || carNum.length < 7 || carNum.length > 8}
                     className="btn-gradient w-full flex items-center justify-center gap-2.5
                                text-white font-bold text-base
                                px-6 py-4 rounded-xl
