@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useId, useEffect } from 'react'
 import {
   Search, CheckCircle2, XCircle, AlertTriangle, ChevronDown,
   RotateCcw, Car, CreditCard, Loader2, Shield, MapPin, Building2,
-  Calendar, Fuel, Palette, Gauge, Info, ChevronLeft, ChevronRight
+  Calendar, Fuel, Palette, Gauge, Info, ChevronLeft, ChevronRight,
+  MessageSquare, ExternalLink
 } from 'lucide-react'
 import {
   checkFinesStream, fetchMunicipalities, fetchMunicipalityImages, fetchVehicleInfo,
@@ -18,9 +19,9 @@ const TEST_MODE =false
 
 const MOCK_MUNICIPALITY_RESULTS: MunicipalityResult[] = [
   { name: 'עיריית בית שמש', status: 'clean' },
-  { name: 'עיריית רמת גן', status: 'fine', count: 2, amount: '750.00', fines: [
-    { number: '12345', amount: 250, date: '15/01/2026', time: '09:30', price_display: '₪250' },
-    { number: '12346', amount: 500, date: '02/02/2026', time: '14:15', price_display: '₪500' },
+  { name: 'עיריית רמת גן', status: 'fine', count: 2, amount: '750.00', payment_url: 'https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=186111', fines: [
+    { number: '12345', amount: 250, date: '15/01/2026', time: '09:30', price_display: '₪250', location: 'רח׳ ביאליק 15', comments: 'דוח חלון' },
+    { number: '12346', amount: 500, date: '02/02/2026', time: '14:15', price_display: '₪500', location: 'רח׳ הרצל 3', comments: 'חניה על מדרכה ( ערעור : נדחה)' },
   ]},
   { name: 'עיריית מודיעין עילית', status: 'clean' },
   { name: 'עיריית גבעתיים', status: 'clean' },
@@ -29,8 +30,8 @@ const MOCK_MUNICIPALITY_RESULTS: MunicipalityResult[] = [
   { name: 'מועצה אזורית גוש עציון', status: 'clean' },
   { name: 'עיריית כפר קאסם', status: 'clean' },
   { name: 'מועצה מקומית בית דגן', status: 'clean' },
-  { name: 'מ.מ. מזכרת בתיה', status: 'fine', count: 1, amount: '350.00', fines: [
-    { number: '99887', amount: 350, date: '10/12/2025', time: '11:00', price_display: '₪350' },
+  { name: 'מ.מ. מזכרת בתיה', status: 'fine', count: 1, amount: '350.00', payment_url: 'https://www.doh.co.il/Default.aspx?ReportType=1&Rashut=920037', fines: [
+    { number: '99887', amount: 350, date: '10/12/2025', time: '11:00', price_display: '₪350', location: 'כיכר הראשונים', comments: 'חניה ללא תג' },
   ]},
   { name: 'מועצה מקומית שוהם', status: 'clean' },
   { name: 'עיריית מעלה אדומים', status: 'clean' },
@@ -249,7 +250,9 @@ function ResultCard({ r, delay, imageUrl, color }: { r: MunicipalityResult; dela
 
         <div className="flex-1 min-w-0">
           <span className="text-sm text-[var(--ink)] font-medium truncate block">{r.name}</span>
-          <StatusBadge status={r.status} count={r.count} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={r.status} count={r.count} />
+          </div>
         </div>
 
         {r.status === 'fine' && r.amount && (
@@ -272,21 +275,51 @@ function ResultCard({ r, delay, imageUrl, color }: { r: MunicipalityResult; dela
       {open && hasFines && (
         <div className="border-t border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 space-y-2 animate-fade-in">
           {r.fines!.map((f, i) => (
-            <div key={i} className="flex items-center gap-3 text-xs py-1.5 border-b border-[var(--border)] last:border-0">
-              {f.number && (
-                <span className="font-mono bg-[var(--surface)] text-[var(--muted)] px-2 py-0.5 rounded-md text-[11px] border border-[var(--border)]">
-                  #{f.number}
-                </span>
-              )}
-              {f.date && <span className="text-[var(--ink-secondary)]">{f.date}</span>}
-              {f.time && <span className="text-[var(--muted)]">{f.time}</span>}
-              {(f.price_display || f.amount) && (
-                <span className="font-semibold text-[var(--danger)] mr-auto">
-                  {f.price_display ?? `₪${f.amount}`}
-                </span>
+            <div key={i} className="py-2 border-b border-[var(--border)] last:border-0">
+              <div className="flex items-center gap-3 text-xs">
+                {f.number && (
+                  <span className="font-mono bg-[var(--surface)] text-[var(--muted)] px-2 py-0.5 rounded-md text-[11px] border border-[var(--border)]">
+                    #{f.number}
+                  </span>
+                )}
+                {f.date && <span className="text-[var(--ink-secondary)]">{f.date}</span>}
+                {f.time && <span className="text-[var(--muted)]">{f.time}</span>}
+                {(f.price_display || f.amount) && (
+                  <span className="font-semibold text-[var(--danger)] mr-auto">
+                    {f.price_display ?? `₪${f.amount}`}
+                  </span>
+                )}
+              </div>
+              {(f.location || f.comments) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-[11px]">
+                  {f.location && (
+                    <span className="inline-flex items-center gap-1 text-[var(--ink-secondary)]">
+                      <MapPin size={10} className="text-[var(--accent)] flex-shrink-0" />
+                      {f.location}
+                    </span>
+                  )}
+                  {f.comments && (
+                    <span className="inline-flex items-center gap-1 text-[var(--muted)]">
+                      <MessageSquare size={10} className="text-[var(--warn)] flex-shrink-0" />
+                      {f.comments}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ))}
+          {r.payment_url && (
+            <a
+              href={r.payment_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 mt-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[var(--accent)] to-purple-500 hover:opacity-90 transition-opacity shadow-lg"
+            >
+              <CreditCard size={14} />
+              מעבר לתשלום
+              <ExternalLink size={12} />
+            </a>
+          )}
         </div>
       )}
     </div>
@@ -295,10 +328,10 @@ function ResultCard({ r, delay, imageUrl, color }: { r: MunicipalityResult; dela
 
 /* ─── Summary ─── */
 
-function Summary({ s }: { s: CheckResponse['summary'] }) {
+function Summary({ s, totalFines }: { s: CheckResponse['summary']; totalFines: number }) {
   const items = [
     { label: 'תקין', value: s.clean, color: 'var(--ok)', bg: 'var(--ok-bg)', border: 'var(--ok-border)', icon: <CheckCircle2 size={18} /> },
-    { label: 'נמצאו דוחות', value: s.fine, color: 'var(--danger)', bg: 'var(--danger-bg)', border: 'var(--danger-border)', icon: <AlertTriangle size={18} /> },
+    { label: 'דוחות', value: totalFines, color: 'var(--danger)', bg: 'var(--danger-bg)', border: 'var(--danger-border)', icon: <AlertTriangle size={18} /> },
     { label: 'לא זמין', value: s.failed, color: 'var(--warn)', bg: 'var(--warn-bg)', border: 'var(--warn-border)', icon: <XCircle size={18} /> },
   ]
 
@@ -1032,7 +1065,7 @@ export default function App() {
               <div className="grid grid-cols-3 border-t border-[var(--border)]">
                 {[
                   { label: 'תקין', value: response.summary.clean, color: 'var(--ok)', icon: <CheckCircle2 size={15} /> },
-                  { label: 'דוחות', value: response.summary.fine, color: 'var(--danger)', icon: <AlertTriangle size={15} /> },
+                  { label: 'דוחות', value: response.results.filter(r => r.status === 'fine').reduce((sum, r) => sum + (r.count || 0), 0), color: 'var(--danger)', icon: <AlertTriangle size={15} /> },
                   { label: 'לא זמין', value: response.summary.failed, color: 'var(--warn)', icon: <XCircle size={15} /> },
                 ].map(({ label, value, color, icon }, i) => (
                   <div key={label} className="text-center py-4 px-3 animate-count-up" style={{ animationDelay: `${300 + i * 100}ms` }}>
@@ -1090,7 +1123,9 @@ export default function App() {
                             ? <img src={img} alt={r.name} className="w-5 h-5 object-contain" />
                             : <span className="text-white font-bold text-[10px]">{muni?.initials || '?'}</span>}
                         </div>
-                        <span className="text-[11px] text-[var(--ok)] font-medium truncate flex-1">{r.name}</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] text-[var(--ok)] font-medium truncate block">{r.name}</span>
+                        </div>
                         <CheckCircle2 size={11} className="text-[var(--ok)] flex-shrink-0 opacity-60" />
                       </div>
                     )

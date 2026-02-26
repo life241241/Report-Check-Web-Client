@@ -4,6 +4,8 @@ export interface Fine {
   price_display?: string
   date?: string
   time?: string
+  location?: string
+  comments?: string
 }
 
 export interface MunicipalityResult {
@@ -14,6 +16,7 @@ export interface MunicipalityResult {
   person_name?: string
   fines?: Fine[]
   error?: string
+  payment_url?: string
 }
 
 export interface CheckResponse {
@@ -26,6 +29,27 @@ export interface CheckResponse {
 }
 
 const BASE = import.meta.env.VITE_API_URL ?? ''
+
+// ─── Geolocation helper (silent — only if already permitted) ───
+let _cachedGeo: { latitude: number; longitude: number } | null = null
+
+export function getUserLocation(): Promise<{ latitude: number; longitude: number } | null> {
+  if (_cachedGeo) return Promise.resolve(_cachedGeo)
+  if (!navigator.geolocation || !navigator.permissions) return Promise.resolve(null)
+  return navigator.permissions.query({ name: 'geolocation' }).then(perm => {
+    if (perm.state !== 'granted') return null          // don't prompt — only use if already allowed
+    return new Promise<{ latitude: number; longitude: number } | null>(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          _cachedGeo = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
+          resolve(_cachedGeo)
+        },
+        () => resolve(null),
+        { timeout: 3000, maximumAge: 300_000 },
+      )
+    })
+  }).catch(() => null)
+}
 
 export interface MunicipalityInfo {
   name: string
@@ -42,10 +66,15 @@ export async function fetchMunicipalities(): Promise<MunicipalityInfo[]> {
 }
 
 export async function checkFines(idNumber: string, carNumber: string): Promise<CheckResponse> {
+  const geo = await getUserLocation()
   const res = await fetch(`${BASE}/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_number: idNumber.trim(), car_number: carNumber.trim() }),
+    body: JSON.stringify({
+      id_number: idNumber.trim(),
+      car_number: carNumber.trim(),
+      ...(geo && { latitude: geo.latitude, longitude: geo.longitude }),
+    }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
@@ -60,10 +89,15 @@ export async function checkFinesStream(
   onResult: (result: MunicipalityResult) => void,
   onDone: (summary: CheckResponse['summary']) => void,
 ): Promise<void> {
+  const geo = await getUserLocation()
   const res = await fetch(`${BASE}/check-stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_number: idNumber.trim(), car_number: carNumber.trim() }),
+    body: JSON.stringify({
+      id_number: idNumber.trim(),
+      car_number: carNumber.trim(),
+      ...(geo && { latitude: geo.latitude, longitude: geo.longitude }),
+    }),
   })
 
   if (!res.ok) {
